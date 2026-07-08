@@ -1,6 +1,6 @@
 services:
   whisper:
-    build: .
+    image: youpingfang/whisper-web:latest
     container_name: whisper-web
     ports:
       - "8000:8000"
