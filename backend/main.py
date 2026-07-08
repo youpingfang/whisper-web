@@ -77,11 +77,17 @@ async def transcribe_url(
     vid = uuid.uuid4().hex
     out_template = str(DOWNLOAD_DIR / f"{vid}.%(ext)s")
 
-    # 如果有 cookies 文件则使用
+    # 扫描 cookies 目录下的所有 .txt 文件, 自动逐个尝试
+    cookies_dir = Path("cookies")
+    cookies_files = sorted(cookies_dir.glob("*.txt")) if cookies_dir.is_dir() else []
+    if not cookies_files:
+        # 兼容旧路径
+        old = Path("bili_cookies.txt")
+        if old.exists():
+            cookies_files = [old]
     cookies_opts = []
-    cookies_path = Path("bili_cookies.txt")
-    if cookies_path.exists():
-        cookies_opts = ["--cookies", str(cookies_path)]
+    for cf in cookies_files:
+        cookies_opts = ["--cookies", str(cf)]
 
     # yt-dlp 下载
     try:

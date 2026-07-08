@@ -8,8 +8,8 @@ services:
       - ./backend/whisper_files:/app/whisper_files
       - ./backend/uploads:/app/uploads
       - ./backend/downloads:/app/downloads
-      # 可选: 挂载 B站 cookies 文件
-      - ./backend/bili_cookies.txt:/app/bili_cookies.txt
+      # 可选: 挂载 B站 cookies 目录 (可放多个 .txt 文件, 自动逐个尝试)
+      - ./backend/cookies:/app/cookies
     restart: unless-stopped
     environment:
       - TZ=Asia/Shanghai
