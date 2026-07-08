@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 
 from fastapi import FastAPI, UploadFile, File, Form
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
 
@@ -17,6 +17,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
 )
+# Docker 或生产环境下, 前端静态文件在 /app/static
+STATIC_DIR = Path("/app/static")
 
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
@@ -129,6 +131,19 @@ def download(kind: str, filename: str):
         return JSONResponse({"error": "not found"}, status_code=404)
     media = "text/plain" if kind == "txt" else "text/vtt" if kind == "vtt" else "text/plain"
     return FileResponse(path, media_type=media, filename=filename)
+
+
+# Docker 生产模式: 前端静态文件 catch-all (API 路由优先, 放在最后)
+if STATIC_DIR.exists():
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        file_path = STATIC_DIR / full_path
+        if file_path.is_file():
+            return FileResponse(file_path)
+        index = STATIC_DIR / "index.html"
+        if index.exists():
+            return HTMLResponse(index.read_text())
+        return JSONResponse({"error": "not found"}, status_code=404)
 
 
 if __name__ == "__main__":

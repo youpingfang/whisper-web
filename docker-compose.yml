@@ -1,0 +1,15 @@
+services:
+  whisper:
+    build: .
+    container_name: whisper-web
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/whisper_files:/app/whisper_files
+      - ./backend/uploads:/app/uploads
+      - ./backend/downloads:/app/downloads
+      # 可选: 挂载 B站 cookies 文件
+      - ./backend/bili_cookies.txt:/app/bili_cookies.txt
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Shanghai

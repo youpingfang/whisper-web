@@ -220,6 +220,7 @@ export default function App() {
                   }`}>粘贴链接</button>
               </div>
               {inputMode === 'file' ? (
+                <div className="space-y-2">
                 <label className="flex cursor-pointer items-center gap-2 rounded-[9px] border border-[var(--color-border-soft)] bg-[var(--color-surface-2)] px-4 py-3 text-base transition-colors hover:border-[var(--color-border-strong)]">
                   <UploadCloud size={20} className="shrink-0 text-[var(--color-ink-dim)]" />
                   <span className="flex-1 truncate text-[var(--color-ink)]">
@@ -227,6 +228,10 @@ export default function App() {
                   </span>
                   <input type="file" accept="audio/*" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
                 </label>
+                {file && (
+                  <audio controls src={URL.createObjectURL(file)} className="w-full h-10 rounded-[9px]" />
+                )}
+                </div>
               ) : (
                 <div className="space-y-3">
                   <input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="粘贴 B站 / YouTube 视频链接…"
