@@ -12,7 +12,9 @@ node_modules/
 dist/
 
 # Output audio files
-whisper_files/*
+whisper_files/*.txt
+whisper_files/*.srt
+whisper_files/*.vtt
 !whisper_files/.gitkeep
 
 # Temporary chunks

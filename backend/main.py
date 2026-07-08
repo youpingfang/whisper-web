@@ -1,7 +1,8 @@
-"""FastAPI 后端: 接收音频, SSE 流式推送识别结果, 提供字幕下载。"""
+"""FastAPI 后端: 接收音频/链接, SSE 流式推送识别结果, 提供字幕下载。"""
 import os
 import json
 import uuid
+import subprocess
 from pathlib import Path
 
 from fastapi import FastAPI, UploadFile, File, Form
@@ -19,6 +20,8 @@ app.add_middleware(
 
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
+DOWNLOAD_DIR = Path("downloads")
+DOWNLOAD_DIR.mkdir(exist_ok=True)
 
 
 @app.get("/api/health")
@@ -35,7 +38,6 @@ async def transcribe(
     chunk_min: int = Form(5),
     use_vad: bool = Form(True),
 ):
-    # 保存上传文件
     ext = Path(file.filename).suffix or ".mp3"
     save_name = f"{uuid.uuid4().hex}{ext}"
     save_path = UPLOAD_DIR / save_name
@@ -45,7 +47,6 @@ async def transcribe(
     lang = None if language == "auto" else language
 
     async def event_gen():
-        # transcribe_file 是同步生成器, 用线程避免阻塞事件循环
         import asyncio
         loop = asyncio.get_event_loop()
         gen = transcribe_file(
@@ -53,9 +54,67 @@ async def transcribe(
             split_mode=split_mode, chunk_min=chunk_min, use_vad=use_vad)
         for item in gen:
             yield {"event": "message", "data": json.dumps(item, ensure_ascii=False)}
-        # 清理上传原件
         try:
             os.remove(save_path)
+        except OSError:
+            pass
+
+    return EventSourceResponse(event_gen())
+
+
+@app.post("/api/transcribe-url")
+async def transcribe_url(
+    url: str = Form(...),
+    model: str = Form("base"),
+    language: str = Form("zh"),
+    split_mode: str = Form("auto"),
+    chunk_min: int = Form(5),
+    use_vad: bool = Form(True),
+):
+    """接收 B站/YouTube 链接 → yt-dlp 下载音频 → 转写"""
+    vid = uuid.uuid4().hex
+    out_template = str(DOWNLOAD_DIR / f"{vid}.%(ext)s")
+
+    # 如果有 cookies 文件则使用
+    cookies_opts = []
+    cookies_path = Path("bili_cookies.txt")
+    if cookies_path.exists():
+        cookies_opts = ["--cookies", str(cookies_path)]
+
+    # yt-dlp 下载
+    try:
+        subprocess.run(
+            ["yt-dlp", "-x", "--audio-format", "mp3",
+             *cookies_opts, "-o", out_template, url],
+            capture_output=True, check=True, timeout=300)
+    except subprocess.CalledProcessError as e:
+        stderr = e.stderr.decode()
+        if "412" in stderr or "Unable to download webpage" in stderr:
+            return JSONResponse(
+                {"error": "B站/视频站需要登录 cookies 才能下载。"
+                          "请先在浏览器登录B站，导出 cookies.txt 文件并上传到页面中。",
+                 "detail": stderr[:300]},
+                status_code=400)
+        return JSONResponse({"error": f"下载失败: {stderr[:200]}"}, status_code=400)
+
+    # 找到实际生成的文件
+    candidates = list(DOWNLOAD_DIR.glob(f"{vid}.*"))
+    if not candidates:
+        return JSONResponse({"error": "下载失败，未生成音频文件"}, status_code=400)
+    audio_path = candidates[0]
+
+    lang = None if language == "auto" else language
+
+    async def event_gen():
+        import asyncio
+        loop = asyncio.get_event_loop()
+        gen = transcribe_file(
+            str(audio_path), model_size=model, language=lang,
+            split_mode=split_mode, chunk_min=chunk_min, use_vad=use_vad)
+        for item in gen:
+            yield {"event": "message", "data": json.dumps(item, ensure_ascii=False)}
+        try:
+            os.remove(audio_path)
         except OSError:
             pass
 

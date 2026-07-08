@@ -22,7 +22,9 @@ const LANGS = [
 ]
 
 export default function App() {
+  const [inputMode, setInputMode] = useState<'file' | 'url'>('file')
   const [file, setFile] = useState<File | null>(null)
+  const [url, setUrl] = useState('')
   const [model, setModel] = useState('base')
   const [language, setLanguage] = useState('zh')
   const [splitMode, setSplitMode] = useState('auto')
@@ -73,7 +75,8 @@ export default function App() {
   const segCount = segments.length
 
   async function start() {
-    if (!file) return
+    if (inputMode === 'file' && !file) return
+    if (inputMode === 'url' && !url.trim()) return
     setStatus('transcribing')
     setSegments([])
     setFullText('')
@@ -84,7 +87,11 @@ export default function App() {
     setCopied(false)
 
     const form = new FormData()
-    form.append('file', file)
+    if (inputMode === 'file') {
+      form.append('file', file!)
+    } else {
+      form.append('url', url.trim())
+    }
     form.append('model', model)
     form.append('language', language)
     form.append('split_mode', splitMode)
@@ -94,8 +101,13 @@ export default function App() {
     const ctrl = new AbortController()
     abortRef.current = ctrl
     try {
-      const res = await fetch('/api/transcribe', { method: 'POST', body: form, signal: ctrl.signal })
-      if (!res.ok || !res.body) throw new Error('请求失败 ' + res.status)
+      const endpoint = inputMode === 'file' ? '/api/transcribe' : '/api/transcribe-url'
+      const res = await fetch(endpoint, { method: 'POST', body: form, signal: ctrl.signal })
+      if (!res.ok || !res.body) {
+        let detail = ''
+        try { const j = await res.json(); detail = j.error || j.detail || '' } catch {}
+        throw new Error(detail || `请求失败 ${res.status}`)
+      }
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
       let buf = ''
@@ -190,26 +202,37 @@ export default function App() {
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>上传音频</CardTitle>
+              <CardTitle>输入方式</CardTitle>
             </CardHeader>
             <CardContent>
-              <label
-                className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-[9px] border border-dashed border-[var(--color-border-soft)] bg-[var(--color-surface-2)] px-4 py-8 text-center transition-colors hover:border-[var(--color-border-strong)]`}
-              >
-                <UploadCloud size={28} className="text-[var(--color-primary)]" />
-                <span className="text-base font-normal text-[var(--color-ink-dim)]">
-                  {file ? file.name : '拖拽或点击选择音频文件'}
-                </span>
-                <span className="text-base font-normal text-[var(--color-ink-mut)]">
-                  mp3 / wav / m4a / flac / ogg …
-                </span>
-                <input
-                  type="file"
-                  accept="audio/*"
-                  className="hidden"
-                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                />
-              </label>
+              <div className="flex gap-2 mb-3">
+                <button onClick={() => setInputMode('file')}
+                  className={`flex-1 rounded-[9px] border px-3 py-2 text-base font-normal transition-colors ${
+                    inputMode === 'file'
+                      ? 'border-[var(--color-selected-bg)] bg-[var(--color-selected-bg)] text-[var(--color-selected-fg)] font-semibold'
+                      : 'border-[var(--color-border-soft)] text-[var(--color-ink-dim)] hover:border-[var(--color-border-strong)]'
+                  }`}>上传音频</button>
+                <button onClick={() => setInputMode('url')}
+                  className={`flex-1 rounded-[9px] border px-3 py-2 text-base font-normal transition-colors ${
+                    inputMode === 'url'
+                      ? 'border-[var(--color-selected-bg)] bg-[var(--color-selected-bg)] text-[var(--color-selected-fg)] font-semibold'
+                      : 'border-[var(--color-border-soft)] text-[var(--color-ink-dim)] hover:border-[var(--color-border-strong)]'
+                  }`}>粘贴链接</button>
+              </div>
+              {inputMode === 'file' ? (
+                <label className="flex cursor-pointer items-center gap-2 rounded-[9px] border border-[var(--color-border-soft)] bg-[var(--color-surface-2)] px-4 py-3 text-base transition-colors hover:border-[var(--color-border-strong)]">
+                  <UploadCloud size={20} className="shrink-0 text-[var(--color-ink-dim)]" />
+                  <span className="flex-1 truncate text-[var(--color-ink)]">
+                    {file ? file.name : '拖拽或点击选择音频文件'}
+                  </span>
+                  <input type="file" accept="audio/*" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+                </label>
+              ) : (
+                <div className="space-y-3">
+                  <input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="粘贴 B站 / YouTube 视频链接…"
+                    className="w-full rounded-[9px] border border-[var(--color-border-soft)] bg-[var(--color-surface-2)] px-4 py-3 text-base outline-none text-[var(--color-ink)] focus:border-[var(--color-border-strong)] placeholder:text-[var(--color-ink-mut)]" />
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -304,7 +327,7 @@ export default function App() {
 
               <Button
                 className="w-full"
-                disabled={!file || status === 'transcribing'}
+                disabled={(inputMode === 'file' ? !file : !url.trim()) || status === 'transcribing'}
                 onClick={start}
               >
                 {status === 'transcribing' ? (
