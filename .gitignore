@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+uploads/*
+!uploads/.gitkeep
+
+# Node
+node_modules/
+dist/
+
+# Output audio files
+whisper_files/*
+!whisper_files/.gitkeep
+
+# Temporary chunks
+.chunks_*/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
