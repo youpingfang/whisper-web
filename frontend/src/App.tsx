@@ -46,6 +46,7 @@ export default function App() {
     const raw = sessionStorage.getItem('whisper-files')
     return raw ? JSON.parse(raw) : null
   })
+  const [videoFile, setVideoFile] = useState(() => sessionStorage.getItem('whisper-video') || '')
   const [progress, setProgress] = useState(0)
   const [copied, setCopied] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
@@ -68,8 +69,9 @@ export default function App() {
       sessionStorage.setItem('whisper-text', fullText)
       sessionStorage.setItem('whisper-lang', detectedLang)
       if (files) sessionStorage.setItem('whisper-files', JSON.stringify(files))
+      if (videoFile) sessionStorage.setItem('whisper-video', videoFile)
     }
-  }, [status, fullText, detectedLang, files])
+  }, [status, fullText, detectedLang, files, videoFile])
 
   const totalChars = fullText.length
   const segCount = segments.length
@@ -137,6 +139,7 @@ export default function App() {
           } else if (msg.type === 'done') {
             setFullText(msg.full_text)
             setFiles(msg.files)
+            setVideoFile(msg.video || '')
             setStatus('done')
           } else if (msg.type === 'error') {
             setErrorMsg(msg.message)
@@ -171,8 +174,12 @@ export default function App() {
     document.body.removeChild(ta)
   }
 
-  function dl(kind: 'txt' | 'srt' | 'vtt') {
+  function dl(kind: 'txt' | 'srt' | 'vtt' | 'video') {
     if (!files) return
+    if (kind === 'video') {
+      if (videoFile) window.open(`/api/download/video/${videoFile}`, '_blank')
+      return
+    }
     const name = files[kind].split('/').pop()
     window.open(`/api/download/${kind}/${name}`, '_blank')
   }
@@ -392,6 +399,11 @@ export default function App() {
                   <Button variant="outline" onClick={() => dl('vtt')}>
                     <Download size={16} /> VTT
                   </Button>
+                  {videoFile && (
+                    <Button variant="outline" onClick={() => dl('video')}>
+                      <Download size={16} /> 下载视频
+                    </Button>
+                  )}
                 </div>
               )}
             </CardContent>
