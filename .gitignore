@@ -11,11 +11,11 @@ uploads/*
 node_modules/
 dist/
 
-# Output audio files
-whisper_files/*.txt
-whisper_files/*.srt
-whisper_files/*.vtt
-!whisper_files/.gitkeep
+# Output audio files (inside backend/)
+backend/whisper_files/*.txt
+backend/whisper_files/*.srt
+backend/whisper_files/*.vtt
+!backend/whisper_files/.gitkeep
 
 # Temporary chunks
 .chunks_*/
