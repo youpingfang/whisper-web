@@ -10,6 +10,21 @@ from pathlib import Path
 from faster_whisper import WhisperModel
 
 _MODEL_CACHE = {}
+_T2S = None  # 繁转简转换器(惰性加载)
+
+
+def _ensure_t2s():
+    """确保繁转简转换器已加载"""
+    global _T2S
+    if _T2S is None:
+        from opencc import OpenCC
+        _T2S = OpenCC('t2s')
+    return _T2S
+
+
+def t2s(text: str) -> str:
+    """繁转简"""
+    return _ensure_t2s().convert(text) if text else text
 
 
 def get_model(model_size: str) -> WhisperModel:
@@ -73,7 +88,7 @@ def transcribe_file(file_path, model_size="base", language=None,
         collected = list(segs)
         all_segments.append((offset, collected))
         for seg in collected:
-            txt = seg.text.strip()
+            txt = t2s(seg.text.strip())
             full.append(txt)
             yield {"type": "segment", "text": txt,
                    "offset": offset, "start": seg.start, "end": seg.end}
@@ -124,7 +139,7 @@ def _write_outputs(all_segments, src_path):
             for seg in segs:
                 start = offset + seg.start
                 end = offset + seg.end
-                text = seg.text.strip()
+                text = t2s(seg.text.strip())
                 ft.write(text + "\n")
                 fs.write(f"{idx}\n{_fmt_srt(start)} --> {_fmt_srt(end)}\n{text}\n\n")
                 fv.write(f"{_fmt_srt(start).replace(',', '.')} --> "
