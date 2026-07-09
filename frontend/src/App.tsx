@@ -47,6 +47,7 @@ export default function App() {
     return raw ? JSON.parse(raw) : null
   })
   const [videoFile, setVideoFile] = useState(() => sessionStorage.getItem('whisper-video') || '')
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [progress, setProgress] = useState(0)
   const [totalChunks, setTotalChunks] = useState(0)
   const [segDone, setSegDone] = useState(0)
@@ -77,6 +78,13 @@ export default function App() {
       if (videoFile) sessionStorage.setItem('whisper-video', videoFile)
     }
   }, [status, fullText, detectedLang, files, videoFile])
+
+  // 自动滚到底部
+  useEffect(() => {
+    if (textareaRef.current && status === 'transcribing') {
+      textareaRef.current.scrollTop = textareaRef.current.scrollHeight
+    }
+  }, [fullText])
 
   const totalChars = fullText.length
   const segCount = segments.length
@@ -430,6 +438,7 @@ export default function App() {
                 <p className="font-light text-[var(--color-warn)]">出错：{errorMsg}</p>
               )}
               <Textarea
+                ref={textareaRef}
                 readOnly
                 value={fullText}
                 placeholder=""
