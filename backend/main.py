@@ -73,9 +73,8 @@ async def transcribe_url(
     chunk_min: int = Form(5),
     use_vad: bool = Form(True),
 ):
-    """接收 B站/YouTube 链接 → yt-dlp 下载视频 → ffmpeg 提取音频 → 转写"""
+    """接收 B站/YouTube 链接 → yt-dlp 下载音频 → 转写"""
     vid = uuid.uuid4().hex
-    video_path = DOWNLOAD_DIR / f"{vid}.mp4"
 
     # 扫描 cookies 目录下的所有 .txt 文件, 自动逐个尝试
     cookies_dir = Path("cookies")
@@ -88,31 +87,21 @@ async def transcribe_url(
     for cf in cookies_files:
         cookies_opts = ["--cookies", str(cf)]
 
-    # yt-dlp 下载视频 (优先 mp4)
+    # 仅下载音频 (小文件, 速度快, 够转写用)
+    audio_path = DOWNLOAD_DIR / f"{vid}.%(ext)s"
     try:
         subprocess.run(
-            ["yt-dlp", "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-             "--merge-output-format", "mp4",
-             *cookies_opts, "-o", str(video_path), url],
-            capture_output=True, check=True, timeout=300)
+            ["yt-dlp", "-f", "bestaudio[ext=m4a]/bestaudio",
+             "--extract-audio", "--audio-format", "mp3",
+             *cookies_opts, "-o", str(audio_path), url],
+            capture_output=True, check=True, timeout=600)
+    except subprocess.TimeoutExpired:
+        return JSONResponse(
+            {"error": "下载超时: 视频音频下载超过 10 分钟，可能文件太大或网络较慢，请稍后重试"},
+            status_code=408)
     except subprocess.CalledProcessError as e:
         stderr = e.stderr.decode()
-        # 如果合并失败, 降级下载任何格式
-        if "Requested format is not available" in stderr or "merge" in stderr:
-            try:
-                subprocess.run(
-                    ["yt-dlp", "-f", "best", *cookies_opts, "-o", str(video_path), url],
-                    capture_output=True, check=True, timeout=300)
-            except subprocess.CalledProcessError as e2:
-                stderr = e2.stderr.decode()
-                if "412" in stderr or "Unable to download webpage" in stderr:
-                    return JSONResponse(
-                        {"error": "B站/视频站需要登录 cookies 才能下载。"
-                                  "请先在浏览器登录B站，导出 cookies.txt 文件并上传到页面中。",
-                         "detail": stderr[:300]},
-                        status_code=400)
-                return JSONResponse({"error": f"下载失败: {stderr[:200]}"}, status_code=400)
-        elif "412" in stderr or "Unable to download webpage" in stderr:
+        if "412" in stderr or "Unable to download webpage" in stderr:
             return JSONResponse(
                 {"error": "B站/视频站需要登录 cookies 才能下载。"
                           "请先在浏览器登录B站，导出 cookies.txt 文件并上传到页面中。",
@@ -120,15 +109,10 @@ async def transcribe_url(
                 status_code=400)
         return JSONResponse({"error": f"下载失败: {stderr[:200]}"}, status_code=400)
 
-    # ffmpeg 提取音频
-    audio_path = DOWNLOAD_DIR / f"{vid}.mp3"
-    subprocess.run(
-        ["ffmpeg", "-y", "-i", str(video_path), "-q:a", "0", "-map", "a", str(audio_path)],
-        capture_output=True, check=True)
-
-    # 确认视频存在
-    if not video_path.exists() or video_path.stat().st_size == 0:
-        return JSONResponse({"error": "下载视频失败，未生成文件"}, status_code=400)
+    # 找到实际下载的 mp3 文件
+    mp3_path = DOWNLOAD_DIR / f"{vid}.mp3"
+    if not mp3_path.exists() or mp3_path.stat().st_size == 0:
+        return JSONResponse({"error": "下载音频失败，未生成文件"}, status_code=400)
 
     lang = None if language == "auto" else language
 
@@ -136,17 +120,16 @@ async def transcribe_url(
         import asyncio
         loop = asyncio.get_event_loop()
         gen = transcribe_file(
-            str(audio_path), model_size=model, language=lang,
+            str(mp3_path), model_size=model, language=lang,
             split_mode=split_mode, chunk_min=chunk_min, use_vad=use_vad)
         for item in gen:
-            # 在 done 事件中附加视频路径
-            if item["type"] == "done":
-                item["video"] = f"{vid}.mp4"
             yield {"event": "message", "data": json.dumps(item, ensure_ascii=False)}
-        try:
-            os.remove(audio_path)  # 只删音频, 保留视频
-        except OSError:
-            pass
+        # 清理音频和可能的临时文件
+        for f in DOWNLOAD_DIR.glob(f"{vid}.*"):
+            try:
+                os.remove(str(f))
+            except OSError:
+                pass
 
     return EventSourceResponse(event_gen())
 
