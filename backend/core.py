@@ -72,9 +72,11 @@ def transcribe_file(file_path, model_size="base", language=None,
     if split_mode == "fixed":
         parts, tmp = split_audio(file_path, chunk_min)
         loader = use_vad
+        yield {"type": "progress", "total": len(parts), "mode": "fixed"}
     else:
         parts, tmp = [(0.0, file_path)], None
         loader = True
+        yield {"type": "progress", "total": 0, "mode": "auto"}
 
     all_segments = []   # (offset, [seg,...])
     detected_lang = language

@@ -48,6 +48,9 @@ export default function App() {
   })
   const [videoFile, setVideoFile] = useState(() => sessionStorage.getItem('whisper-video') || '')
   const [progress, setProgress] = useState(0)
+  const [totalChunks, setTotalChunks] = useState(0)
+  const [segDone, setSegDone] = useState(0)
+  const [progressMode, setProgressMode] = useState<'auto' | 'fixed'>('auto')
   const [copied, setCopied] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
   const abortRef = useRef<AbortController | null>(null)
@@ -86,7 +89,12 @@ export default function App() {
     setDetectedLang('')
     setErrorMsg('')
     setProgress(0)
+    setTotalChunks(0)
+    setSegDone(0)
     setCopied(false)
+
+    let chunkTotal = 0
+    let segCountLocal = 0
 
     const form = new FormData()
     if (inputMode === 'file') {
@@ -131,9 +139,17 @@ export default function App() {
           } catch {
             continue
           }
-          if (msg.type === 'segment') {
+          if (msg.type === 'progress') {
+            setTotalChunks(msg.total)
+            setProgressMode(msg.mode)
+            chunkTotal = msg.total
+          } else if (msg.type === 'segment') {
             setSegments((prev) => [...prev, msg])
             setFullText((prev) => prev + msg.text)
+            segCountLocal++
+            setSegDone(segCountLocal)
+            const total = chunkTotal || Math.max(segCountLocal + 10, 30)
+            setProgress(Math.min(95, Math.round((segCountLocal / total) * 95)))
           } else if (msg.type === 'meta') {
             setDetectedLang(msg.language)
           } else if (msg.type === 'done') {
@@ -369,7 +385,19 @@ export default function App() {
               )}
             </CardHeader>
             <CardContent className="flex flex-1 flex-col gap-3">
-              {status === 'transcribing' && <Progress value={progress} />}
+              {status === 'transcribing' && (
+                <div className="space-y-2">
+                  <Progress value={progress} />
+                  <div className="flex justify-between text-sm text-[var(--color-ink-dim)]">
+                    <span>
+                      {progressMode === 'fixed'
+                        ? `分段: ${segDone} / ${totalChunks}`
+                        : `已识别 ${segDone} 段`}
+                    </span>
+                    <span>{progress}%</span>
+                  </div>
+                </div>
+              )}
               {status === 'idle' && (
                 <p className="font-light text-[var(--color-ink-mut)]">
                   转写结果将在这里实时显示……
