@@ -48,6 +48,11 @@ export default function App() {
   })
   const [videoFile, setVideoFile] = useState(() => sessionStorage.getItem('whisper-video') || '')
   const [progress, setProgress] = useState(0)
+  const [totalChunks, setTotalChunks] = useState(0)
+  const [segDone, setSegDone] = useState(0)
+  const [progressMode, setProgressMode] = useState<'auto' | 'fixed'>('auto')
+  const [currentStage, setCurrentStage] = useState('')
+  const [currentStageText, setCurrentStageText] = useState('')
   const [copied, setCopied] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
   const abortRef = useRef<AbortController | null>(null)
@@ -86,7 +91,13 @@ export default function App() {
     setDetectedLang('')
     setErrorMsg('')
     setProgress(0)
+    setTotalChunks(0)
+    setSegDone(0)
     setCopied(false)
+    setCurrentStage('')
+
+    let chunkTotal = 0
+    let segCountLocal = 0
 
     const form = new FormData()
     if (inputMode === 'file') {
@@ -131,9 +142,20 @@ export default function App() {
           } catch {
             continue
           }
-          if (msg.type === 'segment') {
+          if (msg.type === 'progress') {
+            setTotalChunks(msg.total)
+            setProgressMode(msg.mode)
+            chunkTotal = msg.total
+          } else if (msg.type === 'status') {
+            setCurrentStage(msg.stage)
+            setCurrentStageText(msg.text)
+          } else if (msg.type === 'segment') {
             setSegments((prev) => [...prev, msg])
             setFullText((prev) => prev + msg.text)
+            segCountLocal++
+            setSegDone(segCountLocal)
+            const total = chunkTotal || Math.max(segCountLocal + 10, 30)
+            setProgress(Math.min(95, Math.round((segCountLocal / total) * 95)))
           } else if (msg.type === 'meta') {
             setDetectedLang(msg.language)
           } else if (msg.type === 'done') {
@@ -369,7 +391,36 @@ export default function App() {
               )}
             </CardHeader>
             <CardContent className="flex flex-1 flex-col gap-3">
-              {status === 'transcribing' && <Progress value={progress} />}
+              {status === 'transcribing' && (
+                <div className="space-y-2">
+                  {/* 阶段状态文字 */}
+                  <div className="flex items-center gap-2 text-sm text-[var(--color-ink-dim)]">
+                    <span className="inline-block h-2 w-2 rounded-full bg-[var(--color-primary)] animate-pulse" />
+                    <span>{currentStageText || '处理中…'}</span>
+                  </div>
+                  {/* 转写阶段显示进度 */}
+                  {currentStage === 'transcribing' && (
+                    <>
+                      <Progress value={progress} />
+                      <div className="flex justify-between text-sm text-[var(--color-ink-dim)]">
+                        <span>
+                          {progressMode === 'fixed'
+                            ? `分段: ${segDone} / ${totalChunks}`
+                            : `已识别 ${segDone} 段`}
+                        </span>
+                        <span>{progress}%</span>
+                      </div>
+                    </>
+                  )}
+                  {/* 下载阶段显示闪烁文字 */}
+                  {currentStage !== 'transcribing' && currentStage !== '' && (
+                    <div className="flex gap-2 text-xs text-[var(--color-ink-mut)]">
+                      <span className="animate-pulse">⏳</span>
+                      <span>请稍候，大文件可能需要一些时间</span>
+                    </div>
+                  )}
+                </div>
+              )}
               {status === 'idle' && (
                 <p className="font-light text-[var(--color-ink-mut)]">
                   转写结果将在这里实时显示……
